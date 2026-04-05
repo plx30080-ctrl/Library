@@ -41,7 +41,7 @@ struct BookCoverImage: View {
             }
         }
         .onAppear { loadImages() }
-        .onChange(of: book.localCoverImageFileName) { _ in loadImages() }
+        .onChange(of: book.localCoverImageFileName) { loadImages() }
     }
 
     private func loadImages() {

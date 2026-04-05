@@ -8,6 +8,7 @@ struct LibraryView: View {
     @State private var scannedISBN: String? = nil
     @State private var lookupBook: Book? = nil
     @State private var isLookingUp = false
+    @State private var isBookcaseMode = false
 
     var body: some View {
         NavigationStack {
@@ -15,32 +16,41 @@ struct LibraryView: View {
                 // Filter bar
                 filterBar
 
-                // Book list
-                List {
-                    if libraryVM.filteredBooks.isEmpty {
-                        ContentUnavailableView(
-                            "No Books",
-                            systemImage: "books.vertical",
-                            description: Text("Add books using the + button or scan a barcode.")
-                        )
-                        .listRowBackground(Color.clear)
-                    } else {
-                        ForEach(libraryVM.filteredBooks) { book in
-                            NavigationLink(destination: BookDetailView(book: book)) {
-                                BookRowView(book: book)
+                // Book list / bookcase
+                if isBookcaseMode {
+                    BookcaseView(books: libraryVM.filteredBooks)
+                } else {
+                    List {
+                        if libraryVM.filteredBooks.isEmpty {
+                            ContentUnavailableView(
+                                "No Books",
+                                systemImage: "books.vertical",
+                                description: Text("Add books using the + button or scan a barcode.")
+                            )
+                            .listRowBackground(Color.clear)
+                        } else {
+                            ForEach(libraryVM.filteredBooks) { book in
+                                NavigationLink(destination: BookDetailView(book: book)) {
+                                    BookRowView(book: book)
+                                }
+                            }
+                            .onDelete { offsets in
+                                libraryVM.deleteBooks(at: offsets, in: libraryVM.filteredBooks)
                             }
                         }
-                        .onDelete { offsets in
-                            libraryVM.deleteBooks(at: offsets, in: libraryVM.filteredBooks)
-                        }
                     }
+                    .listStyle(.plain)
                 }
-                .listStyle(.plain)
-                .searchable(text: $libraryVM.searchText, prompt: "Search by title, author, ISBN…")
             }
+            .searchable(text: $libraryVM.searchText, prompt: "Search by title, author, ISBN…")
             .navigationTitle("My Library")
             .toolbar {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button {
+                        withAnimation { isBookcaseMode.toggle() }
+                    } label: {
+                        Image(systemName: isBookcaseMode ? "list.bullet" : "books.vertical.fill")
+                    }
                     sortMenu
                     addMenu
                 }

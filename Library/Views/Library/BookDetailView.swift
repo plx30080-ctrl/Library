@@ -76,7 +76,7 @@ struct BookDetailView: View {
             Button("Cancel", role: .cancel) {}
         }
         .photosPicker(isPresented: $showImagePicker, selection: $pickerItem, matching: .images)
-        .onChange(of: pickerItem) { item in
+        .onChange(of: pickerItem) { _, item in
             guard let item else { return }
             Task {
                 if let data = try? await item.loadTransferable(type: Data.self),
@@ -228,7 +228,7 @@ struct BookDetailView: View {
             }
             .pickerStyle(.menu)
             .disabled(!isEditing)
-            .onChange(of: book.collectionId) { _ in
+            .onChange(of: book.collectionId) {
                 if !isEditing { libraryVM.updateBook(book) }
             }
         }

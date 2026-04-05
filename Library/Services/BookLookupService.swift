@@ -34,8 +34,23 @@ private struct OLDoc: Decodable {
     }
 }
 
+/// Open Library returns `first_sentence` as an array of strings in the Search API.
 private struct OLFirstSentence: Decodable {
-    let value: String?
+    let sentences: [String]
+
+    var value: String? { sentences.first }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        // Search API returns an array of strings
+        if let arr = try? container.decode([String].self) {
+            sentences = arr
+        } else if let str = try? container.decode(String.self) {
+            sentences = [str]
+        } else {
+            sentences = []
+        }
+    }
 }
 
 // MARK: - Service
