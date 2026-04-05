@@ -17,6 +17,7 @@ struct AddBookView: View {
     @State private var publisher: String = ""
     @State private var publishedDate: String = ""
     @State private var pageCount: String = ""
+    @State private var binding: BindingType = .unknown
     @State private var description: String = ""
     @State private var coverURL: String = ""
     @State private var selectedCollectionId: UUID? = nil
@@ -84,6 +85,11 @@ struct AddBookView: View {
                     TextField("Publisher", text: $publisher)
                     TextField("Published Date", text: $publishedDate)
                     TextField("Page Count", text: $pageCount).keyboardType(.numberPad)
+                    Picker("Binding", selection: $binding) {
+                        ForEach(BindingType.allCases) { bt in
+                            Text(bt.rawValue).tag(bt)
+                        }
+                    }
                 }
 
                 Section("Description") {
@@ -195,6 +201,7 @@ struct AddBookView: View {
         publisher = book.publisher ?? ""
         publishedDate = book.publishedDate ?? ""
         pageCount = book.pageCount.map { String($0) } ?? ""
+        binding = book.binding
         description = book.description ?? ""
         coverURL = book.coverImageURL ?? ""
     }
@@ -208,7 +215,8 @@ struct AddBookView: View {
             description: description.isEmpty ? nil : description,
             publisher: publisher.isEmpty ? nil : publisher,
             publishedDate: publishedDate.isEmpty ? nil : publishedDate,
-            pageCount: Int(pageCount)
+            pageCount: Int(pageCount),
+            binding: binding
         )
         book.collectionId = selectedCollectionId
         book.tagIds = Array(selectedTagIds)

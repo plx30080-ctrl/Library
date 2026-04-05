@@ -159,6 +159,11 @@ struct BookDetailView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
+                    if book.binding != .unknown {
+                        Label(book.binding.rawValue, systemImage: book.binding == .hardback ? "book.closed.fill" : "book.closed")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
         }
@@ -198,6 +203,14 @@ struct BookDetailView: View {
                             set: { book.publishedDate = $0.isEmpty ? nil : $0 }
                         ))
                         .multilineTextAlignment(.trailing)
+                    }
+                    LabeledContent("Binding") {
+                        Picker("Binding", selection: $book.binding) {
+                            ForEach(BindingType.allCases) { bt in
+                                Text(bt.rawValue).tag(bt)
+                            }
+                        }
+                        .pickerStyle(.menu)
                     }
                 } else {
                     HStack {

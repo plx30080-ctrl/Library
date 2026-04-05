@@ -95,8 +95,39 @@ class BookLookupService {
     private func searchByISBN(_ isbn: String) async throws -> Book? {
         let clean = isbn.replacingOccurrences(of: "-", with: "")
         let urlString = "https://openlibrary.org/search.json?isbn=\(clean)&limit=1&fields=title,author_name,isbn,cover_i,publish_date,publisher,number_of_pages_median,first_sentence"
-        let books = try await fetch(urlString: urlString)
+        var books = try await fetch(urlString: urlString)
+        guard !books.isEmpty else { return nil }
+        // Supplement with binding info from the Books API
+        if let binding = try? await fetchBinding(isbn: clean) {
+            books[0].binding = binding
+        }
         return books.first
+    }
+
+    /// Fetches `physical_format` for a single ISBN from the Open Library Books API.
+    private func fetchBinding(isbn: String) async throws -> BindingType {
+        let urlString = "https://openlibrary.org/api/books?bibkeys=ISBN:\(isbn)&jscmd=data&format=json"
+        guard let url = URL(string: urlString) else { return .unknown }
+        let (data, _) = try await session.data(from: url)
+        // Response: { "ISBN:xxx": { "physical_format": "Paperback", ... } }
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let entry = root["ISBN:\(isbn)"] as? [String: Any],
+              let format = entry["physical_format"] as? String else {
+            return .unknown
+        }
+        return bindingType(from: format)
+    }
+
+    private func bindingType(from physicalFormat: String) -> BindingType {
+        let lower = physicalFormat.lowercased()
+        if lower.contains("hardcover") || lower.contains("hardback") || lower.contains("hard cover") {
+            return .hardback
+        }
+        if lower.contains("paperback") || lower.contains("softcover") || lower.contains("soft cover")
+            || lower.contains("mass market") || lower.contains("trade paper") {
+            return .paperback
+        }
+        return .unknown
     }
 
     private func fetch(urlString: String) async throws -> [Book] {

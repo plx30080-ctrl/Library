@@ -39,9 +39,19 @@ struct BookcaseView: View {
 
     // MARK: - Layout helpers
 
+    /// Derives the spine width in points from page count and binding type.
+    /// When page count is unknown we fall back to a title-length heuristic so
+    /// manually-entered books without metadata still look reasonable.
     private func spineWidth(for book: Book) -> CGFloat {
+        let minW: CGFloat = 22
+        let maxW: CGFloat = 76
+        if let pages = book.pageCount, pages > 0 {
+            let w = book.binding.baseThicknessPt + CGFloat(pages) * book.binding.pointsPerPage
+            return min(max(w, minW), maxW)
+        }
+        // Fallback: title-length heuristic
         let len = CGFloat(max(book.title.count, 4))
-        return min(max(len * 1.8 + 10, 28), 58)
+        return min(max(len * 1.8 + 10, minW), maxW)
     }
 
     private func buildShelves(maxWidth: CGFloat) -> [[Book]] {
@@ -150,10 +160,16 @@ private struct BookSpineView: View {
 
     @State private var coverImage: UIImage? = nil
 
-    /// Spine width — proportional to title length so wider books have longer titles.
+    /// Spine width — derived from page count + binding, else title-length fallback.
     private var width: CGFloat {
+        let minW: CGFloat = 22
+        let maxW: CGFloat = 76
+        if let pages = book.pageCount, pages > 0 {
+            let w = book.binding.baseThicknessPt + CGFloat(pages) * book.binding.pointsPerPage
+            return min(max(w, minW), maxW)
+        }
         let len = CGFloat(max(book.title.count, 4))
-        return min(max(len * 1.8 + 10, 28), 58)
+        return min(max(len * 1.8 + 10, minW), maxW)
     }
 
     /// Deterministic height variation using stable UUID bytes so each book
