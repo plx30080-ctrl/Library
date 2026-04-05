@@ -20,10 +20,12 @@ class ScannerViewModel: NSObject, ObservableObject, AVCaptureMetadataOutputObjec
     @Published var scannedCode: String? = nil
     @Published var isSessionRunning: Bool = false
 
-    let captureSession = AVCaptureSession()
-    private var captureDevice: AVCaptureDevice?
-    private var metadataOutput: AVCaptureMetadataOutput?
-    private var sessionQueue = DispatchQueue(label: "com.library.scanner.session")
+    // These properties are accessed from the session queue, so they must not
+    // be isolated to the main actor.
+    nonisolated let captureSession = AVCaptureSession()
+    private nonisolated(unsafe) var captureDevice: AVCaptureDevice?
+    private nonisolated(unsafe) var metadataOutput: AVCaptureMetadataOutput?
+    private let sessionQueue = DispatchQueue(label: "com.library.scanner.session")
 
     // MARK: - Session lifecycle
 
