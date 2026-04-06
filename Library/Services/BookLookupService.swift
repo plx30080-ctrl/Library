@@ -42,7 +42,6 @@ private struct OLFirstSentence: Decodable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        // Search API returns an array of strings
         if let arr = try? container.decode([String].self) {
             sentences = arr
         } else if let str = try? container.decode(String.self) {
@@ -51,6 +50,32 @@ private struct OLFirstSentence: Decodable {
             sentences = []
         }
     }
+}
+
+// MARK: - Google Books API response shapes
+
+private struct GBResponse: Decodable {
+    let totalItems: Int
+    let items: [GBItem]?
+}
+
+private struct GBItem: Decodable {
+    let volumeInfo: GBVolumeInfo
+}
+
+private struct GBVolumeInfo: Decodable {
+    let title: String?
+    let authors: [String]?
+    let description: String?
+    let publisher: String?
+    let publishedDate: String?
+    let pageCount: Int?
+    let imageLinks: GBImageLinks?
+}
+
+private struct GBImageLinks: Decodable {
+    let thumbnail: String?
+    let smallThumbnail: String?
 }
 
 // MARK: - Service
@@ -64,14 +89,26 @@ class BookLookupService {
 
     // MARK: Public API
 
-    /// Search by ISBN. Falls back to title/author search if ISBN returns no results.
+    /// Search by ISBN. Tries Open Library first, then supplements or falls back
+    /// to Google Books for any missing cover URL, description, or page count.
     func lookup(isbn: String) async throws -> Book? {
-        // First try ISBN-specific search
-        if let book = try await searchByISBN(isbn) {
-            return book
+        let clean = isbn.replacingOccurrences(of: "-", with: "")
+        var book = try await searchByISBN(clean)
+
+        // Try Google Books to fill gaps (missing cover, description, pageCount)
+        if let gb = try? await fetchGoogleBooks(isbn: clean) {
+            if book == nil {
+                book = gb
+            } else {
+                // Supplement missing fields only
+                if book!.coverImageURL == nil   { book!.coverImageURL  = gb.coverImageURL }
+                if book!.description == nil     { book!.description    = gb.description }
+                if book!.pageCount == nil       { book!.pageCount      = gb.pageCount }
+                if book!.publisher == nil       { book!.publisher      = gb.publisher }
+                if book!.publishedDate == nil   { book!.publishedDate  = gb.publishedDate }
+            }
         }
-        // Nothing found
-        return nil
+        return book
     }
 
     /// Free-text search by title and/or author.
@@ -128,6 +165,33 @@ class BookLookupService {
             return .paperback
         }
         return .unknown
+    }
+
+    /// Queries Google Books for a single ISBN.  Returns a Book with whatever
+    /// fields Google provided; caller merges into the OL result.
+    private func fetchGoogleBooks(isbn: String) async throws -> Book? {
+        let encoded = isbn.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? isbn
+        let urlString = "https://www.googleapis.com/books/v1/volumes?q=isbn:\(encoded)&maxResults=1"
+        guard let url = URL(string: urlString) else { return nil }
+        let (data, _) = try await session.data(from: url)
+        guard let resp = try? JSONDecoder().decode(GBResponse.self, from: data),
+              let item = resp.items?.first else { return nil }
+        let info = item.volumeInfo
+        // Upgrade http thumbnail to https and request larger size
+        let rawThumb = info.imageLinks?.thumbnail ?? info.imageLinks?.smallThumbnail
+        let thumb = rawThumb?
+            .replacingOccurrences(of: "http://", with: "https://")
+            .replacingOccurrences(of: "&zoom=1", with: "&zoom=2")
+        return Book(
+            title: info.title ?? "Unknown Title",
+            author: info.authors?.first ?? "Unknown Author",
+            isbn: isbn,
+            coverImageURL: thumb,
+            description: info.description,
+            publisher: info.publisher,
+            publishedDate: info.publishedDate,
+            pageCount: info.pageCount
+        )
     }
 
     private func fetch(urlString: String) async throws -> [Book] {

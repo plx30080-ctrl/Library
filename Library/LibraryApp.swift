@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct LibraryApp: App {
+struct LitSenseApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()

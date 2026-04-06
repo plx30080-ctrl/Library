@@ -1,55 +1,84 @@
 import SwiftUI
 
+// MARK: - Display mode
+
+enum LibraryDisplayMode: String, CaseIterable {
+    case list      = "List"
+    case magazine  = "Magazine"
+    case bookcase  = "Bookcase"
+
+    var icon: String {
+        switch self {
+        case .list:     return "list.bullet"
+        case .magazine: return "square.grid.2x2"
+        case .bookcase: return "books.vertical.fill"
+        }
+    }
+}
+
 struct LibraryView: View {
     @EnvironmentObject var libraryVM: LibraryViewModel
 
     @State private var showAddBook = false
     @State private var showScanner = false
-    @State private var scannedISBN: String? = nil
     @State private var lookupBook: Book? = nil
     @State private var isLookingUp = false
-    @State private var isBookcaseMode = false
+
+    // Persisted display mode and per-view layout settings
+    @AppStorage("libraryDisplayMode")      private var displayModeRaw: String = LibraryDisplayMode.list.rawValue
+    @AppStorage("bookcaseBooksPerShelf")   private var bookcaseBooksPerShelf: Int = 20
+    @AppStorage("magazineColumns")         private var magazineColumns: Int = 3
+
+    @State private var showLayoutPopover = false
+
+    private var displayMode: LibraryDisplayMode {
+        LibraryDisplayMode(rawValue: displayModeRaw) ?? .list
+    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Filter bar
                 filterBar
 
-                // Book list / bookcase
-                if isBookcaseMode {
-                    BookcaseView(books: libraryVM.filteredBooks)
-                } else {
-                    List {
-                        if libraryVM.filteredBooks.isEmpty {
-                            ContentUnavailableView(
-                                "No Books",
-                                systemImage: "books.vertical",
-                                description: Text("Add books using the + button or scan a barcode.")
-                            )
-                            .listRowBackground(Color.clear)
-                        } else {
-                            ForEach(libraryVM.filteredBooks) { book in
-                                NavigationLink(destination: BookDetailView(book: book)) {
-                                    BookRowView(book: book)
-                                }
-                            }
-                            .onDelete { offsets in
-                                libraryVM.deleteBooks(at: offsets, in: libraryVM.filteredBooks)
-                            }
-                        }
-                    }
-                    .listStyle(.plain)
+                switch displayMode {
+                case .list:
+                    listContent
+                case .magazine:
+                    MagazineView(books: libraryVM.filteredBooks, columns: magazineColumns)
+                case .bookcase:
+                    BookcaseView(books: libraryVM.filteredBooks,
+                                 booksPerShelf: bookcaseBooksPerShelf)
                 }
             }
             .searchable(text: $libraryVM.searchText, prompt: "Search by title, author, ISBN…")
             .navigationTitle("My Library")
             .toolbar {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    Button {
-                        withAnimation { isBookcaseMode.toggle() }
+                    // Layout settings (columns / shelf size) — only for magazine & bookcase
+                    if displayMode != .list {
+                        Button {
+                            showLayoutPopover = true
+                        } label: {
+                            Image(systemName: "slider.horizontal.3")
+                        }
+                        .popover(isPresented: $showLayoutPopover) {
+                            layoutSettingsPopover
+                        }
+                    }
+                    // 3-way view mode picker
+                    Menu {
+                        ForEach(LibraryDisplayMode.allCases, id: \.rawValue) { mode in
+                            Button {
+                                withAnimation { displayModeRaw = mode.rawValue }
+                            } label: {
+                                Label(mode.rawValue, systemImage: mode.icon)
+                                if displayMode == mode {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
                     } label: {
-                        Image(systemName: isBookcaseMode ? "list.bullet" : "books.vertical.fill")
+                        Image(systemName: displayMode.icon)
                     }
                     sortMenu
                     addMenu
@@ -85,21 +114,92 @@ struct LibraryView: View {
         }
     }
 
+    // MARK: - List content
+
+    private var listContent: some View {
+        List {
+            if libraryVM.filteredBooks.isEmpty {
+                ContentUnavailableView(
+                    "No Books",
+                    systemImage: "books.vertical",
+                    description: Text("Add books using the + button or scan a barcode.")
+                )
+                .listRowBackground(Color.clear)
+            } else {
+                ForEach(libraryVM.filteredBooks) { book in
+                    NavigationLink(destination: BookDetailView(book: book)) {
+                        BookRowView(book: book)
+                    }
+                }
+                .onDelete { offsets in
+                    libraryVM.deleteBooks(at: offsets, in: libraryVM.filteredBooks)
+                }
+            }
+        }
+        .listStyle(.plain)
+    }
+
+    // MARK: - Layout settings popover
+
+    private var layoutSettingsPopover: some View {
+        NavigationStack {
+            Form {
+                if displayMode == .bookcase {
+                    Section {
+                        Stepper(value: $bookcaseBooksPerShelf, in: 3...30) {
+                            HStack {
+                                Text("Books per shelf")
+                                Spacer()
+                                Text("\(bookcaseBooksPerShelf)")
+                                    .foregroundColor(.secondary)
+                                    .monospacedDigit()
+                            }
+                        }
+                    } header: {
+                        Text("Bookcase")
+                    } footer: {
+                        Text("Maximum number of books displayed on each shelf row.")
+                    }
+                }
+                if displayMode == .magazine {
+                    Section {
+                        Stepper(value: $magazineColumns, in: 2...6) {
+                            HStack {
+                                Text("Columns")
+                                Spacer()
+                                Text("\(magazineColumns)")
+                                    .foregroundColor(.secondary)
+                                    .monospacedDigit()
+                            }
+                        }
+                    } header: {
+                        Text("Magazine")
+                    } footer: {
+                        Text("Number of cover columns in the grid.")
+                    }
+                }
+            }
+            .navigationTitle("Layout")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { showLayoutPopover = false }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
     // MARK: - Filter bar
 
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                // Collection filter chips
                 collectionChip(id: nil, name: "All")
                 ForEach(libraryVM.collections) { coll in
                     collectionChip(id: coll.id, name: coll.name)
                 }
-
-                Divider()
-                    .frame(height: 20)
-
-                // Tag filter chips
+                Divider().frame(height: 20)
                 ForEach(libraryVM.tags) { tag in
                     tagChip(tag: tag)
                 }
@@ -138,7 +238,7 @@ struct LibraryView: View {
         }
     }
 
-    // MARK: - Toolbars
+    // MARK: - Toolbar menus
 
     private var sortMenu: some View {
         Menu {

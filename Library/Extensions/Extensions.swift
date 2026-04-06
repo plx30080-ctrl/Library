@@ -32,7 +32,7 @@ extension View {
 
 extension Book {
     /// A deterministic spine colour derived from the book's title.
-    /// Uses a DJB2-style hash so results are stable across app launches.
+    /// Used only when no cover image is available.
     var spineColor: Color {
         let hash = title.unicodeScalars.reduce(5381) {
             ($0 &<< 5) &+ $0 &+ Int(bitPattern: UInt($1.value))
@@ -52,5 +52,41 @@ extension Book {
         ]
         let (h, s, b) = palette[abs(hash) % palette.count]
         return Color(hue: h, saturation: s, brightness: b)
+    }
+}
+
+extension UIImage {
+    /// Samples the average colour of a narrow vertical strip at the centre of
+    /// the image — a good approximation of the dominant spine colour.
+    /// Returns nil if pixel data cannot be read.
+    var dominantSpineColor: Color? {
+        guard let cgImage = cgImage else { return nil }
+        let w = cgImage.width, h = cgImage.height
+        let stripW = max(1, w / 6)
+        let startX = (w - stripW) / 2
+        let cs = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
+        guard let ctx = CGContext(data: nil, width: stripW, height: h,
+                                  bitsPerComponent: 8, bytesPerRow: stripW * 4,
+                                  space: cs, bitmapInfo: bitmapInfo) else { return nil }
+        // Draw only the centre strip into the tiny context
+        ctx.draw(cgImage, in: CGRect(x: -CGFloat(startX), y: 0,
+                                     width: CGFloat(w), height: CGFloat(h)))
+        guard let data = ctx.data else { return nil }
+        let ptr = data.bindMemory(to: UInt8.self, capacity: stripW * h * 4)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0
+        let pixels = stripW * h
+        for i in 0..<pixels {
+            let base = i * 4
+            r += CGFloat(ptr[base])     / 255
+            g += CGFloat(ptr[base + 1]) / 255
+            b += CGFloat(ptr[base + 2]) / 255
+        }
+        let n = CGFloat(pixels)
+        // Slightly darken the average so it reads as a rich spine tone
+        let factor: CGFloat = 0.82
+        return Color(red: Double(r / n * factor),
+                     green: Double(g / n * factor),
+                     blue: Double(b / n * factor))
     }
 }

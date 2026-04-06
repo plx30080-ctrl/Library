@@ -6,6 +6,7 @@ import SwiftUI
 /// grouped into shelves that fill across the screen width.
 struct BookcaseView: View {
     let books: [Book]
+    var booksPerShelf: Int = 20   // upper-bound; also constrained by available width
 
     private let maxSpineHeight: CGFloat = 180
     private let shelfThickness: CGFloat = 18
@@ -30,7 +31,6 @@ struct BookcaseView: View {
                 .padding(.bottom, 48)
             }
             .background(
-                // Warm off-white wall behind the shelves
                 Color(red: 0.93, green: 0.90, blue: 0.84)
                     .ignoresSafeArea()
             )
@@ -60,7 +60,8 @@ struct BookcaseView: View {
         var used: CGFloat = 0
         for book in books {
             let w = spineWidth(for: book)
-            if !row.isEmpty && used + w > maxWidth {
+            let shelfFull = row.count >= booksPerShelf || used + w > maxWidth
+            if !row.isEmpty && shelfFull {
                 shelves.append(row)
                 row = [book]
                 used = w
@@ -159,6 +160,7 @@ private struct BookSpineView: View {
     let maxHeight: CGFloat
 
     @State private var coverImage: UIImage? = nil
+    @State private var extractedSpineColor: Color? = nil
 
     /// Spine width — derived from page count + binding, else title-length fallback.
     private var width: CGFloat {
@@ -246,7 +248,8 @@ private struct BookSpineView: View {
                 .resizable()
                 .scaledToFill()
         } else {
-            book.spineColor
+            // Cover colour extracted from remote/local image, else hash-based palette
+            (extractedSpineColor ?? book.spineColor)
         }
     }
 
@@ -402,8 +405,20 @@ private struct BookSpineView: View {
     private func loadCover() {
         if let name = book.localCoverImageFileName {
             coverImage = PersistenceService.shared.coverImage(named: name)
+            extractedSpineColor = coverImage?.dominantSpineColor
         } else {
             coverImage = nil
+            // Asynchronously fetch the remote cover and extract its colour
+            if let urlString = book.coverImageURL, let url = URL(string: urlString) {
+                Task {
+                    if let (data, _) = try? await URLSession.shared.data(from: url),
+                       let img = UIImage(data: data) {
+                        await MainActor.run {
+                            extractedSpineColor = img.dominantSpineColor
+                        }
+                    }
+                }
+            }
         }
     }
 }
